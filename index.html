@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VM 建置 SOP 互動清單</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--bd:#334155;--tx:#e2e8f0;--mut:#94a3b8;--ac:#38bdf8;--ok:#22c55e;--warn:#f59e0b}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 -apple-system,"Segoe UI","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--tx);display:flex;min-height:100vh}
+aside{width:380px;flex:none;background:var(--card);border-right:1px solid var(--bd);padding:16px;overflow-y:auto;height:100vh;position:sticky;top:0}
+main{flex:1;padding:20px 28px;max-width:1000px}
+h1{font-size:18px;margin:0 0 12px}h2{font-size:13px;color:var(--ac);margin:16px 0 6px;text-transform:uppercase;letter-spacing:.05em}
+label{display:block;font-size:12px;color:var(--mut);margin:6px 0 2px}
+input,select,textarea{width:100%;background:#0b1220;color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:6px 8px;font:inherit}
+.row{display:flex;gap:6px}.row>*{flex:1}
+button{background:#334155;color:var(--tx);border:0;border-radius:6px;padding:6px 10px;cursor:pointer;font:inherit}
+button:hover{background:#475569}button.pri{background:var(--ac);color:#04121c}button.dan{background:#7f1d1d}
+.nic{display:flex;gap:4px;align-items:center;margin-bottom:4px}.nic input:nth-child(1){flex:1.2}.nic input:nth-child(2){flex:1}.nic button{flex:none;padding:6px 8px}
+.bar{height:8px;background:#0b1220;border-radius:5px;overflow:hidden;margin:6px 0}.bar i{display:block;height:100%;background:var(--ok);width:0;transition:.2s}
+.top{position:sticky;top:0;background:var(--bg);padding:8px 0;z-index:5;border-bottom:1px solid var(--bd);margin-bottom:12px}
+.phase{margin:22px 0 8px;font-size:16px;color:var(--ac);display:flex;justify-content:space-between;align-items:center}
+.phase small{color:var(--mut);font-size:12px}
+.step{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.step.done{opacity:.55;border-color:var(--ok)}.step.done .t{text-decoration:line-through}
+.hd{display:flex;gap:10px;align-items:flex-start}.hd input{width:18px;height:18px;margin-top:2px;flex:none}
+.t{font-weight:600}.d{color:var(--mut);font-size:13px;margin:2px 0}
+.note{color:var(--warn);font-size:13px;margin:4px 0}
+pre{position:relative;background:#0b1220;border:1px solid var(--bd);border-radius:6px;padding:8px 60px 8px 10px;margin:6px 0 0;overflow-x:auto;white-space:pre;font:12.5px/1.5 Consolas,monospace}
+pre button{position:absolute;top:4px;right:4px;padding:2px 8px;font-size:12px}
+.sm{font-size:12px;color:var(--mut)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}.chips span{background:#0b1220;border:1px solid var(--bd);border-radius:12px;padding:1px 8px;font-size:12px;font-family:Consolas,monospace}
+@media(max-width:900px){body{flex-direction:column}aside{width:100%;height:auto;position:static}}
+</style>
+</head>
+<body>
+<aside>
+<h1>VM 建置參數</h1>
+<div class="row"><div><label>環境 Env</label><select id="env"></select></div><div><label>自訂環境名(選 custom 時)</label><input id="envCustom"></div></div>
+<div class="row"><div><label>VM 名稱 vm_name</label><input id="vm"></div><div><label>最後一個八位元</label><input id="octet" type="number" min="1" max="254"></div></div>
+<div class="row"><div><label>網域 Domain</label><input id="domain"></div><div><label>KVM Host 名稱</label><input id="kvm"></div></div>
+
+<h2>網卡 (主 IP 與 VLAN IP 末段相同)</h2>
+<div class="sm">格式：網段前三段 ／ 主機名後綴（如 -v102，主網卡留空）</div>
+<div id="nics"></div>
+<div class="row"><button id="addNic">+ 新增網卡</button><button id="applyPreset">套用環境預設網卡數</button></div>
+<div class="chips" id="ipChips"></div>
+
+<h2>Git / 帳號</h2>
+<div class="row"><div><label>個人分支</label><input id="branch"></div><div><label>SSH User</label><input id="user"></div></div>
+<div class="row"><div><label>dnszones 目錄</label><input id="dnsDir"></div><div><label>inventory 目錄</label><input id="invDir"></div></div>
+<div class="row"><div><label>kvm role 目錄</label><input id="roleDir"></div><div><label>工作目錄根</label><input id="workRoot"></div></div>
+<label>Inventory 檔 (相對路徑，預設 {env}/inventory)</label><input id="invFile">
+<label>內部 DNS 伺服器 (驗證用，逗號分隔)</label><input id="dnsSrv">
+<label>部署腳本需 sudo 的主機提示</label><input id="sudoHosts">
+
+<h2>DNS 額外項目</h2>
+<label>CNAME (別名=目標，每行一個，留空則略過)</label><textarea id="cnames" rows="2" placeholder="warehouse-db=mysql12"></textarea>
+<label>Inventory 業務群組 (逗號分隔，留空略過)</label><input id="groups" placeholder="mysql12">
+
+<h2>kvm.yml</h2>
+<div class="row"><div><label>RAM (MB)</label><input id="mem" type="number"></div><div><label>vCPU</label><input id="cpu" type="number"></div></div>
+<div class="row"><div><label>Distribution</label><input id="distro"></div><div><label>主版本 (字串)</label><input id="major"></div></div>
+<div class="row"><div><label>完整版本 (不加引號)</label><input id="ver"></div><div><label>Image 檔名</label><input id="image"></div></div>
+<label>Commit 說明</label><input id="msg">
+
+<h2>設定管理</h2>
+<div class="row"><button id="exp">匯出設定</button><button id="imp">匯入設定</button><button class="dan" id="rstCfg">還原預設</button></div>
+<input type="file" id="file" accept=".json" hidden>
+</aside>
+
+<main>
+<div class="top">
+<div class="row" style="align-items:center"><div><b id="prog">0 / 0</b> <span class="sm" id="pct"></span></div>
+<div style="flex:none"><button id="collapse">隱藏已完成</button> <button class="dan" id="reset">重置進度</button></div></div>
+<div class="bar"><i id="bar"></i></div>
+</div>
+<div id="steps"></div>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const ENVS={uat:{nics:2,label:'uat'},prod:{nics:3,label:'prod'},office:{nics:1,label:'office'},dev:{nics:1,label:'dev'},custom:{nics:1,label:''}};
+const DEF={env:'prod',envCustom:'',vm:'vm14',octet:'14',domain:'hkedcity.net',kvm:'dell52',
+ nics:[{p:'10.0.0',s:''},{p:'10.32.16',s:'-v102'},{p:'10.32.32',s:'-v103'}],
+ branch:'jefffan',user:'jeff.fan',dnsDir:'~/dnszones',invDir:'~/infra_ansible_inventory',roleDir:'~/infra_ansible_role_kvm',workRoot:'~/vm_create',
+ invFile:'',dnsSrv:'ibm1.hkedcity.net',sudoHosts:'ibm1 和 ctu121',cnames:'',groups:'',
+ mem:'4096',cpu:'4',distro:'ubuntu',major:'24',ver:'24.04',image:'ubuntu24-prod-tmpl-2025082500.qcow2',msg:''};
+const KEYS=['env','envCustom','vm','octet','domain','kvm','branch','user','dnsDir','invDir','roleDir','workRoot','invFile','dnsSrv','sudoHosts','cnames','groups','mem','cpu','distro','major','ver','image','msg'];
+let cfg=JSON.parse(localStorage.getItem('vmsop.cfg')||'null')||structuredClone(DEF);
+let done=JSON.parse(localStorage.getItem('vmsop.done')||'{}');
+let hideDone=false;
+
+$('env').innerHTML=Object.keys(ENVS).map(k=>`<option>${k}</option>`).join('');
+const save=()=>localStorage.setItem('vmsop.cfg',JSON.stringify(cfg));
+const saveDone=()=>localStorage.setItem('vmsop.done',JSON.stringify(done));
+const envName=()=>cfg.env==='custom'?(cfg.envCustom||'custom'):cfg.env;
+const vmN=()=>cfg.vm||'vmXX';
+const fqdn=h=>`${h}.${cfg.domain}`;
+const ips=()=>cfg.nics.map(n=>({...n,ip:`${n.p}.${cfg.octet}`,host:vmN()+n.s}));
+const revFile=p=>p.split('.').reverse().join('.')+'.in-addr.arpa.yaml';
+
+function loadForm(){KEYS.forEach(k=>$(k).value=cfg[k]??'');renderNics()}
+KEYS.forEach(k=>$(k).addEventListener('input',()=>{cfg[k]=$(k).value;save();render()}));
+$('env').addEventListener('change',()=>{ // env-based defaults
+  if(!$('image').dataset.touched)cfg.image=cfg.image.replace(/-(prod|uat|office|dev)-/,`-${envName()}-`);
+  $('image').value=cfg.image;save();render()});
+$('image').addEventListener('input',()=>$('image').dataset.touched=1);
+
+function renderNics(){
+  $('nics').innerHTML=cfg.nics.map((n,i)=>`<div class="nic"><input value="${n.p}" data-i="${i}" data-f="p" placeholder="10.0.0"><input value="${n.s}" data-i="${i}" data-f="s" placeholder="-v102"><button data-del="${i}" title="刪除">✕</button></div>`).join('');
+  $('nics').querySelectorAll('input').forEach(e=>e.oninput=()=>{cfg.nics[e.dataset.i][e.dataset.f]=e.value.trim();save();render()});
+  $('nics').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{cfg.nics.splice(b.dataset.del,1);save();renderNics();render()});
+}
+$('addNic').onclick=()=>{cfg.nics.push({p:'10.32.0',s:'-v'+(100+cfg.nics.length)});save();renderNics();render()};
+$('applyPreset').onclick=()=>{const n=ENVS[cfg.env].nics;while(cfg.nics.length<n)cfg.nics.push({p:'10.32.0',s:'-v'+(100+cfg.nics.length)});cfg.nics.length=n;save();renderNics();render()};
+$('reset').onclick=()=>{if(confirm('確定重置所有勾選進度？')){done={};saveDone();render()}};
+$('collapse').onclick=()=>{hideDone=!hideDone;$('collapse').textContent=hideDone?'顯示已完成':'隱藏已完成';render()};
+$('rstCfg').onclick=()=>{if(confirm('還原所有參數為預設？')){cfg=structuredClone(DEF);save();loadForm();render()}};
+$('exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(cfg,null,2)],{type:'application/json'}));a.download=`vm-sop-${vmN()}.json`;a.click()};
+$('imp').onclick=()=>$('file').click();
+$('file').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{cfg={...structuredClone(DEF),...JSON.parse(t)};save();loadForm();render()})};
+
+function steps(){
+  const E=envName(),V=vmN(),F=fqdn(V),N=ips(),H=cfg.kvm,KF=fqdn(H),U=cfg.user,B=cfg.branch;
+  const wd=`${cfg.workRoot}/${V}-build`;
+  const inv=`${cfg.invDir}/${cfg.invFile||E+'/inventory'}`;
+  const cn=cfg.cnames.split('\n').map(s=>s.trim()).filter(Boolean).map(s=>s.split('=').map(x=>x.trim()));
+  const grp=cfg.groups.split(',').map(s=>s.trim()).filter(Boolean);
+  const files=[...new Set(N.map(n=>revFile(n.p)))];
+  const msg=cfg.msg||`Add ${E.toUpperCase()} ${V} DNS records`;
+  const dns=cfg.dnsSrv.split(',').map(s=>s.trim()).filter(Boolean);
+  const aList=N.map(n=>`  ${n.host}  →  ${n.ip}`).join('\n');
+  const P=[];
+  P.push({ph:'階段一：DNS 設定 (dnszones)',s:[
+   {id:'1.1',t:'確認 vm_name 與 IP',d:'主 IP 與所有 VLAN IP 最後一個八位元必須一致。',c:`vm_name: ${V}\n`+N.map(n=>`${n.host.padEnd(14)} ${n.ip}`).join('\n'),n:N.length?'':'請至少新增一張網卡',chk:(new Set(N.map(n=>n.p)).size!==N.length)?'⚠ 有重複的網段':''},
+   {id:'1.2',t:'同步 dnszones repo',c:`cd ${cfg.dnsDir}\ngit checkout ${B}\ngit fetch origin\ngit merge origin/main`,n:'避免 PR 衝突，這步很重要。'},
+   {id:'1.3',t:'修改 public-zones/'+cfg.domain+'.yml (A / CNAME)',d:'在 a_records: 區塊加入主機名與所有網卡：\n'+aList+(cn.length?'\n在 cname_records: 加入：\n'+cn.map(([a,b])=>`  ${a} → ${b}`).join('\n'):''),c:`vi public-zones/${cfg.domain}.yaml`},
+   {id:'1.4',t:'修改反向解析 (PTR)',d:'在各檔 ptr_records: 區塊加入：\n'+N.map(n=>`  ${revFile(n.p)}: ${cfg.octet} → ${fqdn(n.host)}`).join('\n'),c:files.map(f=>`vi private-zones/${f}`).join('\n')},
+   {id:'1.5',t:'提交並推送',c:`git diff\ngit add .\ngit commit -m "${msg}"\ngit push origin ${B}`,n:'先檢查 diff 與 YAML 縮排。'},
+   {id:'1.6',t:'GitHub 發 PR 並等待 Merge',d:`Compare & pull request → base: main / compare: ${B} → Create pull request → 等待審核 Approve 並 Merge。`},
+   {id:'1.7',t:'更新本地 main 並打 Tag',c:`git checkout main\ngit pull origin main\nTAG_NAME=$(date +%Y%m%d%H%M)\ngit tag -a $TAG_NAME -m "Deploy ${msg.replace(/^Add /,'')}"\ngit push origin $TAG_NAME`,n:'需等 PR 已 Merge。'},
+   {id:'1.8',t:'本地執行部署腳本 (內部 Private Zones)',d:`先 dry-run，再正式部署。執行時需輸入 ${cfg.sudoHosts} 的 sudo 密碼。`,c:`python3 scripts/deploy-local-dns.py --config conf/deploy-local-dns.conf --ssh-user ${U} --dry-run\npython3 scripts/deploy-local-dns.py --config conf/deploy-local-dns.conf --ssh-user ${U}`},
+   {id:'1.9',t:'驗證 DNS',c:`ping ${F}\n`+N.flatMap(n=>dns.map(d=>`nslookup ${n.ip} ${d}`)).join('\n')}
+  ]});
+  P.push({ph:'階段二：更新 infra_ansible_inventory',s:[
+   {id:'2.1',t:'進入 Inventory 目錄並同步分支',c:`cd ${cfg.invDir}\ngit checkout ${B}\ngit fetch origin\ngit merge origin/main`},
+   {id:'2.2',t:`修改 ${E}/inventory`,d:'實體機群組只寫主機名，不用寫 -vXXX，Ansible 會自動從 DNS 取網卡。',c:`vi ${cfg.invFile||E+'/inventory'}\n\n[kvm_host_${H}]\n${F}   # <-- 新增${grp.map(g=>`\n\n[${g}]\n${F}   # <-- 新增`).join('')}`},
+   {id:'2.3',t:'提交並推送，發 PR 並 Merge',c:`git diff\ngit add .\ngit commit -m "Add ${V} to ${E} inventory"\ngit push origin ${B}`,n:'可與階段一的 DNS PR 一起發。'}
+  ]});
+  P.push({ph:'階段三：建立工作區',s:[
+   {id:'3.1',t:'建立目錄並複製範本',c:`mkdir -p ${wd}\ncd ${wd}\ncp ${cfg.roleDir}/tests/* .\nfor f in *.example; do mv "$f" "\${f%.example}"; done`},
+   {id:'3.2',t:'安裝 Role 依賴',c:`ansible-galaxy install -r requirements.yml`,n:'若詢問 SSH passphrase 請輸入 Key 密碼，看到 successfully 即成功。'}
+  ]});
+  P.push({ph:'階段四：修改 kvm.yml',s:[
+   {id:'4.1',t:'編輯 kvm.yml',d:`先到 ${KF} 執行 ls /opt/site/image/ 確認 Image 檔名。`,n:`版本號 ${cfg.ver} 絕對不要加雙引號。`,c:`vi kvm.yml\n\n---
+- name: Create KVM guest/template
+  hosts: all
+  become: yes
+  any_errors_fatal: true
+  gather_facts: false
+
+  vars:
+    kvm_guest_mem: ${cfg.mem}
+    kvm_guest_vcpus: ${cfg.cpu}
+
+    env: ${E}
+    distribution: ${cfg.distro}
+    distribution_major_version: "${cfg.major}"
+    distribution_version: ${cfg.ver}
+
+    kvm_${cfg.distro}${cfg.major}_image_release: "${cfg.image}"
+
+  roles:
+    - file-backup-module
+    - kvm`}
+  ]});
+  P.push({ph:'階段五：執行 Ansible 建立 VM',s:[
+   {id:'5.1',t:'確保 SSH 通行',c:`ssh-copy-id ${U}@${KF}`},
+   {id:'5.2',t:'正式執行 playbook',d:`在 ${wd} 目錄下執行。-l 限制只對 ${V} 動作。Permission denied 時加 -k。`,c:`cd ${wd}\nansible-playbook -i ${inv} kvm.yml -K -l ${F}`}
+  ]});
+  P.push({ph:'階段六：建置後驗證',s:[
+   {id:'6.1',t:'確認 PLAY RECAP',d:'failed=0 即建置成功。',c:`${F.padEnd(26)}: ok=20 changed=9 unreachable=0 failed=0 skipped=1`},
+   {id:'6.2',t:'SSH 登入並檢查',c:`ssh ${U}@${F}\n\nip a            # 確認 ${N.length} 張網卡 IP：${N.map(n=>n.ip).join(', ')}\nfree -h         # 確認 ${cfg.mem} MB\nnproc           # 確認 ${cfg.cpu} vCPU\nlsb_release -a  # 確認 ${cfg.ver}`}
+  ]});
+  P.push({ph:'補充：失敗時打掉重練 (在 KVM 實體機)',s:[
+   {id:'x.1',t:'清理 VM',d:'僅在建置失敗需重來時執行，清完後重做階段五。',n:'⚠ 破壞性操作，請確認 VM 名稱正確。',c:`ssh ${U}@${KF}\nsudo virsh destroy ${V}\nsudo virsh undefine ${V} --remove-all-storage\nsudo rm -rf /opt/site/automation_template/${V}`}
+  ]});
+  return P;
+}
+
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+function render(){
+  $('ipChips').innerHTML=ips().map(n=>`<span>${esc(n.host)} ${esc(n.ip)}</span>`).join('');
+  const P=steps();let tot=0,dn=0,html='';
+  P.forEach((p,pi)=>{
+    const pd=p.s.filter(s=>done[s.id]).length;tot+=p.s.length;dn+=pd;
+    html+=`<div class="phase"><span>${esc(p.ph)}</span><small>${pd}/${p.s.length} <button data-ph="${pi}">全選/取消</button></small></div>`;
+    p.s.forEach(s=>{
+      if(hideDone&&done[s.id])return;
+      html+=`<div class="step ${done[s.id]?'done':''}"><div class="hd"><input type="checkbox" data-id="${s.id}" ${done[s.id]?'checked':''}><div style="flex:1;min-width:0"><div class="t">${s.id} ${esc(s.t)}</div>`+
+      (s.d?`<div class="d">${esc(s.d).replace(/\n/g,'<br>')}</div>`:'')+(s.n?`<div class="note">${esc(s.n)}</div>`:'')+(s.chk?`<div class="note">${esc(s.chk)}</div>`:'')+
+      (s.c?`<pre>${esc(s.c)}<button data-copy="${s.id}">複製</button></pre>`:'')+`</div></div></div>`;
+    });
+  });
+  $('steps').innerHTML=html;
+  $('prog').textContent=`${dn} / ${tot}`;const pc=tot?Math.round(dn/tot*100):0;$('pct').textContent=pc+'%';$('bar').style.width=pc+'%';
+  $('steps').querySelectorAll('[data-id]').forEach(c=>c.onchange=()=>{c.checked?done[c.dataset.id]=1:delete done[c.dataset.id];saveDone();render()});
+  $('steps').querySelectorAll('[data-ph]').forEach(b=>b.onclick=()=>{const ss=P[b.dataset.ph].s,all=ss.every(s=>done[s.id]);ss.forEach(s=>all?delete done[s.id]:done[s.id]=1);saveDone();render()});
+  $('steps').querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{
+    const s=P.flatMap(p=>p.s).find(x=>x.id===b.dataset.copy);navigator.clipboard.writeText(s.c);b.textContent='已複製';setTimeout(()=>b.textContent='複製',1000)});
+}
+loadForm();render();
+</script>
+</body>
+</html>
